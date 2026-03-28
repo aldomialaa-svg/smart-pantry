@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المؤن الذكية - النسخة المطورة</title>
+    <style>
+        :root { 
+            --primary: #27ae60; 
+            --danger: #e74c3c; 
+            --warning: #f39c12; /* اللون البرتقالي للتنبيه */
+            --dark: #2c3e50; 
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
+        .container { max-width: 450px; margin: auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: var(--dark); border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        .input-box { background: #f9f9f9; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #eee; }
+        input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        .add-btn { width: 100%; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        .card { background: white; border-right: 10px solid #ccc; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+        
+        /* الألوان بناءً على الحالة */
+        .status-safe { border-right-color: var(--primary); }
+        .status-danger { border-right-color: var(--danger); background: #fff5f5; }
+        .status-warning { border-right-color: var(--warning); background: #fffaf0; } /* تنسيق البرتقالي */
+
+        .btn-search { background: #3498db; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; text-decoration: none; display: inline-block; }
+        .no-search { color: #e74c3c; font-size: 11px; font-weight: bold; border: 1px solid #ffcccc; padding: 5px; border-radius: 5px; display: inline-block; }
+        .delete-btn { color: #888; background: none; border: none; cursor: pointer; font-size: 10px; display: block; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🍎 المؤن الذكية</h2>
+    <div class="input-box">
+        <input type="text" id="p_name" placeholder="اسم المنتج">
+        <input type="date" id="p_date">
+        <button class="add-btn" onclick="addItem()">إضافة</button>
+    </div>
+    <div id="pantryList"></div>
+</div>
+
+<script>
+    window.onload = function() { render(); };
+
+    function addItem() {
+        const name = document.getElementById('p_name').value;
+        const date = document.getElementById('p_date').value;
+        if (!name || !date) return alert("أكمل البيانات");
+
+        const item = { id: Date.now(), name: name, expiry: date };
+        let db = JSON.parse(localStorage.getItem('PantryFinal_V10')) || [];
+        db.push(item);
+        localStorage.setItem('PantryFinal_V10', JSON.stringify(db));
+        
+        document.getElementById('p_name').value = '';
+        document.getElementById('p_date').value = '';
+        render();
+    }
+
+    function render() {
+        const list = document.getElementById('pantryList');
+        list.innerHTML = '';
+        let db = JSON.parse(localStorage.getItem('PantryFinal_V10')) || [];
+
+        let today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        db.forEach(item => {
+            let expDate = new Date(item.expiry);
+            expDate.setHours(0, 0, 0, 0);
+
+            let diff = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+
+            let d = String(expDate.getDate()).padStart(2, '0');
+            let m = String(expDate.getMonth() + 1).padStart(2, '0');
+            let y = expDate.getFullYear();
+            let dateStr = `${d} / ${m} / ${y}`;
+
+            // تحديد الحالة واللون
+            let statusClass = 'status-safe';
+            let statusColor = 'green';
+            let dayMsg = `باقي ${diff} يوم`;
+
+            if (diff < 0) {
+                statusClass = 'status-danger';
+                statusColor = 'red';
+                dayMsg = "منتهي ❌";
+            } else if (diff <= 3) { // إذا كان باقي 3 أيام أو أقل يظهر بالبرتقالي
+                statusClass = 'status-warning';
+                statusColor = '#d35400'; // برتقالي غامق للنص
+                dayMsg = `باقي ${diff} يوم (قرب ينتهي! ⚠️)`;
+            }
+
+            let actionContent = '';
+            if (diff < 0) {
+                actionContent = `<span class="no-search">⚠️ تخلص منه (منتهي)</span>`;
+            } else {
+                actionContent = `<a href="https://www.google.com/search?q=وصفة باستخدام ${item.name}" target="_blank" class="btn-search">🔍 بحث عن وصفة</a>`;
+            }
+
+            list.innerHTML += `
+                <div class="card ${statusClass}">
+                    <div>
+                        <strong>${item.name}</strong><br>
+                        <small>التاريخ: ${dateStr}</small><br>
+                        <span style="font-size:12px; font-weight:bold; color:${statusColor}">${dayMsg}</span>
+                    </div>
+                    <div style="text-align: left;">
+                        ${actionContent}
+                        <button class="delete-btn" onclick="remove(${item.id})">[حذف]</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function remove(id) {
+        let db = JSON.parse(localStorage.getItem('PantryFinal_V10'));
+        db = db.filter(i => i.id !== id);
+        localStorage.setItem('PantryFinal_V10', JSON.stringify(db));
+        render();
+    }
+</script>
+
+</body>
+</html>
