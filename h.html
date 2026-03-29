@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المؤن الذكية - نسخة الماسح الضوئي</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root { 
+            --primary: #27ae60; 
+            --danger: #e74c3c; 
+            --warning: #f39c12; 
+            --dark: #2c3e50; 
+            --accent: #8e44ad;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; margin: 0; }
+        .container { max-width: 450px; margin: auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: var(--dark); border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        
+        .input-box { background: #f9f9f9; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #eee; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        
+        .button-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        .add-btn { flex: 2; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .scan-btn { flex: 1; background: var(--accent); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        
+        /* منطقة الكاميرا */
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 15px; display: none; border: 2px solid var(--accent); }
+
+        .card { background: white; border-right: 10px solid #ccc; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+        .status-safe { border-right-color: var(--primary); }
+        .status-danger { border-right-color: var(--danger); background: #fff5f5; }
+        .status-warning { border-right-color: var(--warning); background: #fffaf0; }
+
+        .btn-search { background: #3498db; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; text-decoration: none; }
+        .delete-btn { color: #888; background: none; border: none; cursor: pointer; font-size: 11px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🍎 المؤن الذكية + Scan</h2>
+    
+    <div class="input-box">
+        <div id="reader"></div>
+        
+        <input type="text" id="p_name" placeholder="اسم المنتج (أو امسح الباركود)">
+        <input type="date" id="p_date">
+        
+        <div class="button-group">
+            <button class="scan-btn" onclick="startScan()">📷 مسح</button>
+            <button class="add-btn" onclick="addItem()">إضافة للمؤن</button>
+        </div>
+    </div>
+
+    <div id="pantryList"></div>
+</div>
+
+<script>
+    window.onload = function() { render(); };
+
+    // --- وظيفة ماسح الباركود ---
+    let html5QrCode;
+
+    function startScan() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.style.display = 'block';
+        
+        html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
+    }
+
+    function onScanSuccess(decodedText) {
+        // إيقاف الكاميرا بعد المسح الناجح
+        html5QrCode.stop().then(() => {
+            document.getElementById('reader').style.display = 'none';
+            
+            // جلب بيانات المنتج من قاعدة بيانات مفتوحة (OpenFoodFacts)
+            fetch(`https://world.openfoodfacts.org/api/v0/product/${decodedText}.json`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 1) {
+                        document.getElementById('p_name').value = data.product.product_name_ar || data.product.product_name || "منتج غير معروف";
+                    } else {
+                        document.getElementById('p_name').value = "كود: " + decodedText;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('p_name').value = "كود: " + decodedText;
+                });
+        });
+    }
+
+    // --- بقية وظائف البرنامج كما هي مع تحسين الترتيب ---
+    function addItem() {
+        const name = document.getElementById('p_name').value;
+        const date = document.getElementById('p_date').value;
+        if (!name || !date) return alert("أكمل البيانات");
+
+        const item = { id: Date.now(), name: name, expiry: date };
+        let db = JSON.parse(localStorage.getItem('PantryFinal_V10')) || [];
+        db.push(item);
+        localStorage.setItem('PantryFinal_V10', JSON.stringify(db));
+        
+        document.getElementById('p_name').value = '';
+        document.getElementById('p_date').value = '';
+        render();
+    }
+
+    function render() {
+        const list = document.getElementById('pantryList');
+        list.innerHTML = '';
+        let db = JSON.parse(localStorage.getItem('PantryFinal_V10')) || [];
+
+        // ترتيب: الأقرب للانتهاء أولاً
+        db.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+
+        let today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        db.forEach(item => {
+            let expDate = new Date(item.expiry);
+            let diff = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+            
+            let statusClass = 'status-safe';
+            let statusColor = 'green';
+            let dayMsg = `باقي ${diff} يوم`;
+
+            if (diff < 0) {
+                statusClass = 'status-danger'; statusColor = 'red'; dayMsg = "منتهي ❌";
+            } else if (diff <= 3) {
+                statusClass = 'status-warning'; statusColor = '#d35400'; dayMsg = `قرب ينتهي! (باقي ${diff})`;
+            }
+
+            list.innerHTML += `
+                <div class="card ${statusClass}">
+                    <div>
+                        <strong>${item.name}</strong><br>
+                        <small>${item.expiry}</small><br>
+                        <span style="font-size:12px; font-weight:bold; color:${statusColor}">${dayMsg}</span>
+                    </div>
+                    <div style="text-align: left;">
+                        <a href="https://www.google.com/search?q=وصفة باستخدام ${item.name}" target="_blank" class="btn-search">🔍 وصفة</a>
+                        <button class="delete-btn" onclick="remove(${item.id})">حذف</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function remove(id) {
+        if(confirm("حذف المنتج؟")) {
+            let db = JSON.parse(localStorage.getItem('PantryFinal_V10'));
+            db = db.filter(i => i.id !== id);
+            localStorage.setItem('PantryFinal_V10', JSON.stringify(db));
+            render();
+        }
+    }
+</script>
+
+</body>
+</html>
